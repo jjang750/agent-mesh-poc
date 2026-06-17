@@ -74,7 +74,8 @@ Orchestrator: discover → select → dispatch ──(handoff?)──┐
 ## 테스트
 
 디스커버리(3카드), 카드 기반 선택, intra/inter 무핸드오프, Finance→Legal 핸드오프,
-JWT 거부, DLP — 총 7종. Remote 서버 2개를 서브프로세스로 기동, 임시 레지스트리로 격리.
+JWT 거부, DLP, 그리고 종료 판정(`resolve_handoff`) 단위 테스트(정상/계속/사이클/소진) —
+총 11종. Remote 서버 2개를 서브프로세스로 기동, 임시 레지스트리로 격리.
 
 ## 범위 외 (후속)
 
