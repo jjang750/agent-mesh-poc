@@ -1,0 +1,21 @@
+// Agent Mesh A2A 통신 계약 — 도메인 간 에이전트 호출용 gRPC 서비스 정의
+syntax = "proto3";
+
+package agent_mesh;
+
+// 타 도메인 에이전트로 보내는 요청. JWT는 body가 아니라 metadata로 전달한다.
+message AgentRequest {
+  string prompt = 1;
+  map<string, string> context = 2;
+}
+
+// 추론 결과를 청크 단위로 흘려보내는 스트리밍 응답.
+message AgentChunk {
+  string text = 1;
+  bool done = 2;
+}
+
+service AgentService {
+  // 단일 요청 → 서버 스트리밍 응답.
+  rpc Invoke(AgentRequest) returns (stream AgentChunk);
+}
