@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x61gent_mesh.proto\x12\nagent_mesh\"\x86\x01\n\x0c\x41gentRequest\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\x36\n\x07\x63ontext\x18\x02 \x03(\x0b\x32%.agent_mesh.AgentRequest.ContextEntry\x1a.\n\x0c\x43ontextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"(\n\nAgentChunk\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x0c\n\x04\x64one\x18\x02 \x01(\x08\x32L\n\x0c\x41gentService\x12<\n\x06Invoke\x12\x18.agent_mesh.AgentRequest\x1a\x16.agent_mesh.AgentChunk0\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x61gent_mesh.proto\x12\nagent_mesh\"\x9a\x01\n\x0c\x41gentRequest\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\x36\n\x07\x63ontext\x18\x02 \x03(\x0b\x32%.agent_mesh.AgentRequest.ContextEntry\x12\x12\n\nagent_name\x18\x03 \x01(\t\x1a.\n\x0c\x43ontextEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"T\n\nAgentChunk\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x0c\n\x04\x64one\x18\x02 \x01(\x08\x12\x12\n\nhandoff_to\x18\x03 \x01(\t\x12\x16\n\x0ehandoff_reason\x18\x04 \x01(\t2L\n\x0c\x41gentService\x12<\n\x06Invoke\x12\x18.agent_mesh.AgentRequest\x1a\x16.agent_mesh.AgentChunk0\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,11 +34,11 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_AGENTREQUEST_CONTEXTENTRY']._loaded_options = None
   _globals['_AGENTREQUEST_CONTEXTENTRY']._serialized_options = b'8\001'
   _globals['_AGENTREQUEST']._serialized_start=33
-  _globals['_AGENTREQUEST']._serialized_end=167
-  _globals['_AGENTREQUEST_CONTEXTENTRY']._serialized_start=121
-  _globals['_AGENTREQUEST_CONTEXTENTRY']._serialized_end=167
-  _globals['_AGENTCHUNK']._serialized_start=169
-  _globals['_AGENTCHUNK']._serialized_end=209
-  _globals['_AGENTSERVICE']._serialized_start=211
-  _globals['_AGENTSERVICE']._serialized_end=287
+  _globals['_AGENTREQUEST']._serialized_end=187
+  _globals['_AGENTREQUEST_CONTEXTENTRY']._serialized_start=141
+  _globals['_AGENTREQUEST_CONTEXTENTRY']._serialized_end=187
+  _globals['_AGENTCHUNK']._serialized_start=189
+  _globals['_AGENTCHUNK']._serialized_end=273
+  _globals['_AGENTSERVICE']._serialized_start=275
+  _globals['_AGENTSERVICE']._serialized_end=351
 # @@protoc_insertion_point(module_scope)

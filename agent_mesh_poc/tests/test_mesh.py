@@ -1,5 +1,6 @@
-# Agent Mesh PoC 통합 테스트 — intra/inter 경로, JWT 거부, DLP 마스킹 검증
+# Agent Mesh PoC 통합 테스트 — 디스커버리, 동적 라우팅, 핸드오프, JWT 거부, DLP
 import asyncio
+import os
 import socket
 import subprocess
 import sys
@@ -9,13 +10,16 @@ from pathlib import Path
 import grpc
 import pytest
 
+from agent_mesh_poc.common import registry
 from agent_mesh_poc.common.dlp import mask
 from agent_mesh_poc.common.jwt_utils import issue_token
+from agent_mesh_poc.common.selection import select_agent
 from agent_mesh_poc.generated import agent_mesh_pb2, agent_mesh_pb2_grpc
+from agent_mesh_poc.orchestrator import hr_agent
 from agent_mesh_poc.orchestrator.graph import build_mesh_graph
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PORT = 50051
+SERVERS = [(50051, "Finance_Agent"), (50052, "Legal_Agent")]
 
 
 def _wait_port(host: str, port: int, timeout: float = 15.0) -> bool:
@@ -32,20 +36,47 @@ def _wait_port(host: str, port: int, timeout: float = 15.0) -> bool:
 
 
 @pytest.fixture(scope="module")
-def remote_server():
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "agent_mesh_poc.remote_domain.server"],
-        cwd=str(REPO_ROOT),
-    )
-    if not _wait_port("localhost", PORT):
-        proc.terminate()
-        pytest.fail("Domain B gRPC 서버가 시간 내에 기동하지 않았습니다.")
+def mesh(tmp_path_factory):
+    # 테스트 전용 레지스트리 디렉터리로 격리(서브프로세스에도 env로 전파).
+    reg_dir = tmp_path_factory.mktemp("registry")
+    os.environ["AGENT_MESH_REGISTRY_DIR"] = str(reg_dir)
+    env = {**os.environ, "AGENT_MESH_REGISTRY_DIR": str(reg_dir)}
+
+    # intra 에이전트 카드 등록.
+    registry.register(hr_agent.CARD)
+
+    procs = []
+    for port, agent in SERVERS:
+        procs.append(
+            subprocess.Popen(
+                [sys.executable, "-m", "agent_mesh_poc.remote_domain.server",
+                 "--port", str(port), "--agents", agent],
+                cwd=str(REPO_ROOT),
+                env=env,
+            )
+        )
+    for port, _ in SERVERS:
+        if not _wait_port("localhost", port):
+            for p in procs:
+                p.terminate()
+            pytest.fail(f"Remote 서버 기동 실패: {port}")
     yield
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
+    for p in procs:
+        p.terminate()
+        try:
+            p.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            p.kill()
+
+
+def _state(prompt: str) -> dict:
+    return {
+        "prompt": prompt,
+        "jwt": issue_token("u1", ["employee"]),
+        "context": {},
+        "chunks": [],
+        "hops": [],
+    }
 
 
 def test_dlp_mask():
@@ -55,38 +86,42 @@ def test_dlp_mask():
     assert "***" in masked
 
 
-def test_intra_route():
-    graph = build_mesh_graph()
-    state = {
-        "prompt": "휴가 규정 알려줘",
-        "jwt": issue_token("u1", ["employee"]),
-        "context": {},
-        "chunks": [],
-    }
-    final = asyncio.run(graph.ainvoke(state))
-    assert final["route"] == "intra"
+def test_discovery(mesh):
+    names = {c["name"] for c in registry.discover()}
+    assert {"HR_Agent", "Finance_Agent", "Legal_Agent"} <= names
+
+
+def test_select_by_card(mesh):
+    # 디스커버리된 카드 기준으로 휴가 질의는 HR이 선택돼야 한다.
+    assert select_agent("휴가 규정 알려줘", registry.discover()) == "HR_Agent"
+
+
+def test_intra_no_handoff(mesh):
+    final = asyncio.run(build_mesh_graph().ainvoke(_state("휴가 규정 알려줘")))
+    assert final["hops"] == ["HR_Agent"]
     assert "HR_Agent" in final["answer"]
 
 
-def test_inter_route(remote_server):
-    graph = build_mesh_graph()
-    state = {
-        "prompt": "급여 인상 예산 검토해줘",
-        "jwt": issue_token("u1", ["employee"]),
-        "context": {},
-        "chunks": [],
-    }
-    final = asyncio.run(graph.ainvoke(state))
-    assert final["route"] == "inter"
+def test_inter_no_handoff(mesh):
+    final = asyncio.run(build_mesh_graph().ainvoke(_state("급여 예산 검토해줘")))
+    assert final["hops"] == ["Finance_Agent"]
     assert "Finance_Agent" in final["answer"]
-    assert len(final["chunks"]) > 1  # 스트리밍으로 여러 청크 수신
+    assert len(final["chunks"]) > 1  # gRPC 스트리밍 청크
 
 
-def test_bad_jwt_rejected(remote_server):
+def test_handoff_finance_to_legal(mesh):
+    final = asyncio.run(build_mesh_graph().ainvoke(_state("급여 인상의 법적 근거 검토해줘")))
+    assert final["hops"] == ["Finance_Agent", "Legal_Agent"]
+    assert "Legal_Agent" in final["answer"]
+
+
+def test_bad_jwt_rejected(mesh):
     async def _call():
-        async with grpc.aio.insecure_channel(f"localhost:{PORT}") as channel:
+        async with grpc.aio.insecure_channel("localhost:50051") as channel:
             stub = agent_mesh_pb2_grpc.AgentServiceStub(channel)
-            request = agent_mesh_pb2.AgentRequest(prompt="x", context={})
+            request = agent_mesh_pb2.AgentRequest(
+                prompt="x", context={}, agent_name="Finance_Agent"
+            )
             metadata = [("authorization", "Bearer invalid.token.value")]
             async for _ in stub.Invoke(request, metadata=metadata):
                 pass

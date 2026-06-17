@@ -1,32 +1,81 @@
-# Orchestrator(Coordinator) 그래프 — intra/inter 도메인 라우팅 메인 mesh 그래프
+# Orchestrator — 디스커버리(레지스트리) + 핸드오프 루프 메인 mesh 그래프
 from langgraph.graph import END, START, StateGraph
 
+from agent_mesh_poc.common import registry
+from agent_mesh_poc.common.selection import select_agent
 from agent_mesh_poc.common.state import MeshState
+from agent_mesh_poc.orchestrator import hr_agent
 from agent_mesh_poc.orchestrator.grpc_client import call_remote
-from agent_mesh_poc.orchestrator.hr_agent import build_hr_subgraph
 
-# 이 키워드가 있으면 타 도메인(Finance)으로 위임한다.
-_INTER_KEYWORDS = ("finance", "재무", "예산", "비용", "급여", "회계")
+MAX_HOPS = 4
 
-
-def _route(state: MeshState) -> dict:
-    route = "inter" if any(k in state["prompt"] for k in _INTER_KEYWORDS) else "intra"
-    return {"route": route}
+# 오케스트레이터 프로세스가 직접 보유한 intra 에이전트(인메모리 그래프).
+_LOCAL_AGENTS = {hr_agent.CARD["name"]: hr_agent.build_graph()}
 
 
-def _branch(state: MeshState) -> str:
-    return state["route"]
+def _discover(state: MeshState) -> dict:
+    # 하드코딩 대신 레지스트리에서 등록된 에이전트 카드를 조회한다.
+    return {"catalog": registry.discover()}
+
+
+def _select(state: MeshState) -> dict:
+    # 카드 skills 매칭으로 최초 처리 에이전트를 동적으로 고른다.
+    return {"target": select_agent(state["prompt"], state["catalog"])}
+
+
+async def _dispatch(state: MeshState) -> dict:
+    name = state["target"]
+    card = registry.lookup(name)
+    if card is None:
+        msg = f"[Orchestrator] 레지스트리에 에이전트 없음: {name}"
+        return {"hops": [str(name)], "chunks": [msg], "answer": msg, "handoff_to": ""}
+
+    if card["domain"] == "intra":
+        # Intra-domain: 인메모리 그래프 직접 호출(네트워크 없음).
+        out = _LOCAL_AGENTS[name].invoke(
+            {"prompt": state["prompt"], "context": state.get("context", {})}
+        )
+        answer = out.get("answer", "")
+        result = {
+            "answer": answer,
+            "chunks": [answer] if answer else [],
+            "handoff_to": out.get("handoff_to", ""),
+            "handoff_reason": out.get("handoff_reason", ""),
+        }
+    else:
+        # Inter-domain: gRPC 스트리밍.
+        result = await call_remote(
+            card, state["prompt"], state.get("context", {}), state["jwt"]
+        )
+
+    update = {
+        "hops": [name],
+        "chunks": result["chunks"],
+        "answer": result["answer"],
+        "handoff_to": result.get("handoff_to", ""),
+        "handoff_reason": result.get("handoff_reason", ""),
+    }
+    if result.get("handoff_to"):
+        update["target"] = result["handoff_to"]
+    return update
+
+
+def _after_dispatch(state: MeshState) -> str:
+    # 핸드오프가 있고 hop 한도 미만이면 다시 dispatch, 아니면 종료.
+    if state.get("handoff_to") and len(state["hops"]) < MAX_HOPS:
+        return "dispatch"
+    return END
 
 
 def build_mesh_graph():
     g = StateGraph(MeshState)
-    g.add_node("router", _route)
-    g.add_node("hr_agent", build_hr_subgraph())   # Intra-domain: 인메모리 subgraph
-    g.add_node("finance_remote", call_remote)     # Inter-domain: gRPC 스트리밍
-    g.add_edge(START, "router")
+    g.add_node("discover", _discover)
+    g.add_node("select", _select)
+    g.add_node("dispatch", _dispatch)
+    g.add_edge(START, "discover")
+    g.add_edge("discover", "select")
+    g.add_edge("select", "dispatch")
     g.add_conditional_edges(
-        "router", _branch, {"intra": "hr_agent", "inter": "finance_remote"}
+        "dispatch", _after_dispatch, {"dispatch": "dispatch", END: END}
     )
-    g.add_edge("hr_agent", END)
-    g.add_edge("finance_remote", END)
     return g.compile()

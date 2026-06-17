@@ -7,12 +7,16 @@ package agent_mesh;
 message AgentRequest {
   string prompt = 1;
   map<string, string> context = 2;
+  string agent_name = 3;  // 한 서버가 여러 에이전트를 호스팅할 때 대상 지정
 }
 
 // 추론 결과를 청크 단위로 흘려보내는 스트리밍 응답.
+// handoff_to가 채워지면 답변 대신 다른 에이전트로의 핸드오프 지시다.
 message AgentChunk {
   string text = 1;
   bool done = 2;
+  string handoff_to = 3;
+  string handoff_reason = 4;
 }
 
 service AgentService {
