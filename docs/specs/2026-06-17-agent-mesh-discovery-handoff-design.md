@@ -42,7 +42,10 @@
   `AgentChunk.handoff_to` / `handoff_reason`(답변 대신 핸드오프 지시).
 - 에이전트 `respond()`는 `{"answer"}` 또는 `{"handoff_to","handoff_reason"}` 반환.
 - 오케스트레이터 그래프: `discover → select → dispatch` 이고, dispatch는 핸드오프를
-  받으면 대상을 `target`으로 바꿔 dispatch로 다시 분기(`MAX_HOPS` 가드).
+  받으면 대상을 `target`으로 바꿔 dispatch로 다시 분기한다.
+- 종료 보장(`orchestrator/handoff.py`의 순수 함수 `resolve_handoff`): 이미 방문한
+  에이전트로의 재핸드오프(사이클) 또는 카드 수만큼 시도 후에도 답이 없으면 루프를 끊고,
+  빈 답변 대신 명시적 실패 메시지(방문 경로 포함)로 덮어쓴다. 방문 추적은 `hops`로 한다.
 
 ## 토폴로지
 

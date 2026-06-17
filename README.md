@@ -92,7 +92,8 @@ gRPC 스텁 재생성이 필요하면(프로토 변경 시):
 - **Agent Card**: 각 에이전트가 `{name, description, skills, domain, endpoint}` 카드를 발행. (cf. Google A2A의 Agent Card / `/.well-known/agent.json`)
 - **Registry**: 파일 기반(`.registry/<name>.json`). 에이전트가 기동 시 자기 카드를 등록(write), 오케스트레이터가 조회(read). 프로세스 간 공유.
 - **선택**: 카드 `skills`와 프롬프트의 매칭 점수로 동적 선택(룰 기반). 프로덕션에서는 LLM 매칭으로 교체.
-- **핸드오프**: 에이전트가 답변 대신 `handoff_to`를 반환 → 오케스트레이터가 그 대상을 레지스트리에서 찾아 dispatch 루프를 다시 돈다. `MAX_HOPS`로 무한 루프 방지.
+- **핸드오프**: 에이전트가 답변 대신 `handoff_to`를 반환 → 오케스트레이터가 그 대상을 레지스트리에서 찾아 dispatch 루프를 다시 돈다.
+- **종료 보장**([handoff.py](agent_mesh_poc/orchestrator/handoff.py)): 이미 방문한 에이전트로의 재핸드오프(사이클)나 등록된 카드 수만큼 시도해도 답이 없으면 루프를 끊고, **빈 답변 대신 명시적 실패 메시지**(방문 경로 포함)를 반환한다. `hops`가 거쳐간 에이전트 수(=호출 횟수)를 그대로 기록한다.
 
 ## 보안 (PoC 범위)
 

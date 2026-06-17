@@ -17,6 +17,7 @@ from agent_mesh_poc.common.selection import select_agent
 from agent_mesh_poc.generated import agent_mesh_pb2, agent_mesh_pb2_grpc
 from agent_mesh_poc.orchestrator import hr_agent
 from agent_mesh_poc.orchestrator.graph import build_mesh_graph
+from agent_mesh_poc.orchestrator.handoff import resolve_handoff
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SERVERS = [(50051, "Finance_Agent"), (50052, "Legal_Agent")]
@@ -129,3 +130,30 @@ def test_bad_jwt_rejected(mesh):
     with pytest.raises(grpc.aio.AioRpcError) as exc:
         asyncio.run(_call())
     assert exc.value.code() == grpc.StatusCode.UNAUTHENTICATED
+
+
+# --- 핸드오프 종료 판정(순수 함수, 서버 불필요) ---
+
+def test_resolve_handoff_answered():
+    d = resolve_handoff(["Finance_Agent"], "", 3)
+    assert d["action"] == "stop"
+    assert d["message"] == ""  # 정상 답변 → 실제 답변을 덮어쓰지 않음
+
+
+def test_resolve_handoff_continue():
+    d = resolve_handoff(["Finance_Agent"], "Legal_Agent", 3)
+    assert d == {"action": "continue", "target": "Legal_Agent"}
+
+
+def test_resolve_handoff_cycle():
+    d = resolve_handoff(["Finance_Agent", "Legal_Agent"], "Finance_Agent", 3)
+    assert d["action"] == "stop"
+    assert "사이클" in d["message"]
+    assert "찾지 못했습니다" in d["message"]
+
+
+def test_resolve_handoff_exhausted():
+    # 카드 3개를 모두 방문한 뒤 또 핸드오프 → 소진(미방문 대상이라도 한도).
+    d = resolve_handoff(["A", "B", "C"], "D", 3)
+    assert d["action"] == "stop"
+    assert "한도 도달" in d["message"]

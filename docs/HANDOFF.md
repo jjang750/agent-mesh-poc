@@ -20,7 +20,8 @@ LangGraph 기반 A2A(Agent-to-Agent) Mesh PoC. 디스커버리(Agent Card + Regi
 - **2단계 (commit `d121f42`)**: 디스커버리 + 핸드오프.
   - Registry: 파일 기반 `.registry/<name>.json`. 에이전트가 기동 시 카드 `register()`, 오케스트레이터가 `discover()`.
   - 선택: 카드 `skills` 매칭 점수 기반 동적 선택(룰 기반).
-  - 핸드오프: 에이전트가 `handoff_to` 반환 → 오케스트레이터가 레지스트리에서 대상 찾아 dispatch 루프 재진입(`MAX_HOPS` 가드).
+  - 핸드오프: 에이전트가 `handoff_to` 반환 → 오케스트레이터가 레지스트리에서 대상 찾아 dispatch 루프 재진입.
+  - 종료 보장(`orchestrator/handoff.py`의 `resolve_handoff`): 사이클(이미 방문) 또는 카드 수 소진 시 루프 종료 + 빈 답변 대신 실패 메시지. 호출 횟수는 `hops` 길이로 카운트됨.
 - **테스트 7/7 통과.** 마지막으로 녹색 확인함.
 
 에이전트 3개: `HR_Agent`(intra, 오케스트레이터 인메모리), `Finance_Agent`(inter :50051),

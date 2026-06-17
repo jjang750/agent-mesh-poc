@@ -6,8 +6,7 @@ from agent_mesh_poc.common.selection import select_agent
 from agent_mesh_poc.common.state import MeshState
 from agent_mesh_poc.orchestrator import hr_agent
 from agent_mesh_poc.orchestrator.grpc_client import call_remote
-
-MAX_HOPS = 4
+from agent_mesh_poc.orchestrator.handoff import resolve_handoff
 
 # 오케스트레이터 프로세스가 직접 보유한 intra 에이전트(인메모리 그래프).
 _LOCAL_AGENTS = {hr_agent.CARD["name"]: hr_agent.build_graph()}
@@ -55,16 +54,26 @@ async def _dispatch(state: MeshState) -> dict:
         "handoff_to": result.get("handoff_to", ""),
         "handoff_reason": result.get("handoff_reason", ""),
     }
-    if result.get("handoff_to"):
-        update["target"] = result["handoff_to"]
+
+    # 사이클(이미 방문) / 카드 수 소진을 판정해 루프 종료를 보장한다.
+    visited = state["hops"] + [name]
+    decision = resolve_handoff(
+        visited, result.get("handoff_to", ""), len(state.get("catalog") or [])
+    )
+    if decision["action"] == "continue":
+        update["target"] = decision["target"]  # handoff_to 유지 → 다시 dispatch
+    else:
+        update["handoff_to"] = ""  # 종료
+        if decision["message"]:
+            # 핸드오프였으나 진행 불가 → 빈 답변 대신 명시적 실패 메시지로 덮어쓴다.
+            update["answer"] = decision["message"]
+            update["chunks"] = [decision["message"]]
     return update
 
 
 def _after_dispatch(state: MeshState) -> str:
-    # 핸드오프가 있고 hop 한도 미만이면 다시 dispatch, 아니면 종료.
-    if state.get("handoff_to") and len(state["hops"]) < MAX_HOPS:
-        return "dispatch"
-    return END
+    # 종료 판정은 _dispatch가 handoff_to를 비우는 것으로 끝낸다(사이클/소진 포함).
+    return "dispatch" if state.get("handoff_to") else END
 
 
 def build_mesh_graph():
